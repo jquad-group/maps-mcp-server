@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: teams
-  labels:
-    name: teams
-    app.kubernetes.io/name: maps-mcp-server
-    app.kubernetes.io/component: namespace
