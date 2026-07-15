@@ -16,6 +16,8 @@ spec:
       labels:
         {{- include "chart.selectorLabels" . | nindent 8 }}
     spec:
+      securityContext:
+        fsGroup: 1000
       {{- if .Values.nodeAffinityAntiGpu }}
       affinity:
         nodeAffinity:
