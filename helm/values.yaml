@@ -1,0 +1,82 @@
+namespace:
+  name: jq-mcp-servers
+
+nameOverride: ""
+fullnameOverride: maps-mcp-server
+
+image:
+  registry: harbor.jquad.rocks/library/jquad-agent
+  repository: jquad-agent-maps-mcp-server
+  # tag: ""   # falls back to Chart.appVersion
+  pullPolicy: Always
+
+port: 8007
+
+replicas: 1
+
+configMap:
+  data:
+    LOG_LEVEL: "INFO"
+    # Backend geo services (deployed in the geo namespace)
+    VALHALLA_URL: "http://valhalla.geo.svc.cluster.local:8002"
+    NOMINATIM_URL: "http://nominatim.geo.svc.cluster.local:8080"
+    OVERPASS_URL: "http://overpass.geo.svc.cluster.local:80/api/interpreter"
+    NOMINATIM_RATE_LIMIT_RPS: "5.0"
+    NOMINATIM_USER_AGENT: "jquad-maps-mcp"
+    OVERPASS_TIMEOUT: "90.0"
+    POI_DATA_PATH: "/app/data/poi"
+    POI_DEFAULT_COLLECTION: "bestwestern-eu"
+    POI_DEFAULT_BRAND: "Best Western"
+    POI_DEFAULT_AREA: "germany"
+    MAX_MATRIX_SIZE: "50"
+    HTTP_TIMEOUT_SECONDS: "30.0"
+    HTTP_CONNECT_TIMEOUT: "10.0"
+    KEYCLOAK_ENABLED: "false"
+    KEYCLOAK_SERVER_URL: "https://keycloak.jquad.rocks"
+    KEYCLOAK_REALM: "master"
+    KEYCLOAK_CLIENT_ID: "maps-mcp"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy.lgtm.svc.cluster.local:4317"
+    OTEL_SERVICE_NAME: "maps-mcp-server"
+    OTEL_TRACES_EXPORTER: "otlp"
+
+# maps-mcp-server has no external API keys — all backends are self-hosted.
+externalSecret:
+  enabled: false
+  vaultPath: jquad/production/mcp/maps-mcp-server
+  secretStoreRef:
+    name: openbao-cluster-store
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  secretName: maps-mcp-server-secret
+
+imagePullSecret:
+  enabled: true
+  vaultPath: jquad/production/harbor
+  vaultKey: DOCKERCONFIGJSON
+  name: regcred-maps-mcp-server
+
+# PVC for the POI data cache (/app/data/poi). The server stores ingested POI
+# JSON collections here so they survive pod restarts.
+pvc:
+  enabled: true
+  storageClassName: longhorn-gpu-dynamic
+  size: 1Gi
+  mountPath: /app/data/poi
+
+nodeAffinityAntiGpu: true
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+probe:
+  type: tcp
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 3

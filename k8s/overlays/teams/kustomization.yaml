@@ -1,0 +1,40 @@
+# Teams overlay for Maps MCP Server.
+# Matches the web-crawler / web-search-discovery deployment target: namespace
+# `teams`, Keycloak disabled (in-cluster trust), Harbor image pull via ExternalSecret.
+#
+# Usage:
+#   kubectl apply -k k8s/overlays/teams
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: teams
+
+resources:
+- ../../base
+- externalsecret.yaml
+
+images:
+- name: harbor.jquad.rocks/library/jquad-agent/jquad-agent-maps-mcp-server
+  newTag: latest
+
+patches:
+- patch: |-
+    - op: add
+      path: /spec/template/spec/imagePullSecrets
+      value:
+      - name: regcred-maps-mcp-server
+  target:
+    kind: Deployment
+    name: maps-mcp-server
+
+- patch: |-
+    - op: replace
+      path: /data/KEYCLOAK_ENABLED
+      value: "false"
+  target:
+    kind: ConfigMap
+    name: maps-mcp-config
+
+commonLabels:
+  environment: teams

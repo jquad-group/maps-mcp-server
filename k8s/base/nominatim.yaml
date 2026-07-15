@@ -1,0 +1,121 @@
+# Nominatim geocoder — address -> coordinates.
+#
+# Uses the mediagis/nominatim image. On first boot it imports the PBF
+# referenced by PBF_URL (Germany by default), which takes 30-60 min and
+# ~3-4 GB RAM. Subsequent boots are instant (data is on the PVC). Set
+# REBUILD=false after the first successful import to shorten restart time.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nominatim
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: nominatim
+    app.kubernetes.io/component: geocoder
+    app.kubernetes.io/part-of: jquad-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nominatim
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nominatim
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values:
+                - "true"
+      containers:
+      - name: nominatim
+        image: mediagis/nominatim:4.3
+        imagePullPolicy: IfNotPresent
+        env:
+        # Geofabrik Germany extract. Switch to europe or a smaller region as
+        # needed; the two backends should use the same extract for consistency.
+        - name: PBF_URL
+          value: "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+        - name: REPLICATION_URL
+          value: "https://download.geofabrik.de/europe/germany-updates/"
+        # Set to "false" after the first successful import to skip the
+        # (fast but non-zero) startup check on every restart.
+        - name: IMPORT_WIKIPEDIA
+          value: "false"
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        volumeMounts:
+        - name: nominatim-data
+          mountPath: /var/lib/postgresql/14/main
+        resources:
+          # Import peaks at ~4 GB; steady-state ~1-2 GB.
+          requests:
+            memory: "2Gi"
+            cpu: "250m"
+          limits:
+            memory: "5Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /status.php
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /status.php
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
+      volumes:
+      - name: nominatim-data
+        persistentVolumeClaim:
+          claimName: nominatim-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nominatim
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: nominatim
+    app.kubernetes.io/component: geocoder
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: nominatim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nominatim-data
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: nominatim
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      # Imported Germany DB is ~30-40 GB.
+      storage: 60Gi

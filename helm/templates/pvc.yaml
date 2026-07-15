@@ -1,0 +1,19 @@
+{{- if .Values.pvc.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "chart.fullname" . }}-poi-data
+  namespace: {{ include "chart.namespace" . }}
+  labels:
+    app.kubernetes.io/component: storage
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.pvc.storageClassName }}
+  storageClassName: {{ .Values.pvc.storageClassName }}
+  {{- end }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.pvc.size }}
+{{- end }}

@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maps-mcp-config
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: maps-mcp-server
+    app.kubernetes.io/component: config
+data:
+  # ===========================================
+  # Server Configuration
+  # ===========================================
+  PORT: "8007"
+  LOG_LEVEL: "INFO"
+
+  # ===========================================
+  # Backend Services (sibling pods in this namespace)
+  # ===========================================
+  # Valhalla routing engine — isochrones + time/distance matrix + routes.
+  VALHALLA_URL: "http://valhalla.teams.svc.cluster.local:8002"
+  # Nominatim geocoder — address -> coordinates.
+  NOMINATIM_URL: "http://nominatim.teams.svc.cluster.local:8080"
+  # Throttle for the geocoder (self-hosted Nominatim has no hard cap, but we
+  # are defensive). 1/rps = min seconds between calls.
+  NOMINATIM_RATE_LIMIT_RPS: "5.0"
+  NOMINATIM_USER_AGENT: "jquad-maps-mcp"
+
+  # ===========================================
+  # POI Data
+  # ===========================================
+  # Where ingested POI JSON caches are written/read. Mounted from a PVC.
+  POI_DATA_PATH: "/app/data/poi"
+  POI_DEFAULT_COLLECTION: "bestwestern-eu"
+  POI_DEFAULT_BRAND: "Best Western"
+  POI_DEFAULT_AREA: "europe"
+  # Max destinations per Valhalla sources_to_targets call; larger candidate
+  # lists are chunked.
+  MAX_MATRIX_SIZE: "50"
+
+  # ===========================================
+  # Overpass (POI ingest only)
+  # ===========================================
+  # Public endpoint by default. For production, point at a self-hosted
+  # Overpass instance or a paid mirror — the public instances are rate-limited.
+  OVERPASS_URL: "https://overpass-api.de/api/interpreter"
+  OVERPASS_TIMEOUT: "90.0"
+
+  # ===========================================
+  # HTTP Client Configuration
+  # ===========================================
+  HTTP_TIMEOUT_SECONDS: "30.0"
+  HTTP_CONNECT_TIMEOUT: "10.0"
+
+  # ===========================================
+  # Keycloak JWT Authentication (optional)
+  # ===========================================
+  # The agent forwards the user's bootstrap token as Bearer regardless; this
+  # only decides whether the maps server *validates* it. Disable for the
+  # teams overlay (matches the other MCP servers there).
+  KEYCLOAK_ENABLED: "false"
+  KEYCLOAK_SERVER_URL: "https://keycloak.jquad.rocks"
+  KEYCLOAK_REALM: "master"
+  KEYCLOAK_CLIENT_ID: "maps-mcp"
+
+  # ===========================================
+  # OpenTelemetry Configuration
+  # ===========================================
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy.lgtm.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "maps-mcp-server"
+  OTEL_TRACES_EXPORTER: "otlp"

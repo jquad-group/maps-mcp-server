@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}
+  namespace: {{ include "chart.namespace" . }}
+  labels:
+    app.kubernetes.io/component: mcp-server
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chart.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.nodeAffinityAntiGpu }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.present
+                    operator: NotIn
+                    values:
+                      - "true"
+      {{- end }}
+      {{- if .Values.imagePullSecret.enabled }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret.name }}
+      {{- end }}
+      containers:
+        - name: {{ include "chart.name" . }}
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.port }}
+              name: http
+              protocol: TCP
+          env:
+            # --- Server port (single value drives containerPort/service/probes) ---
+            - name: PORT
+              value: {{ .Values.port | quote }}
+          # envFrom injects EVERY key from the ConfigMap as env vars, so
+          # new configMap.data entries are picked up automatically.
+          envFrom:
+            - configMapRef:
+                name: {{ include "chart.fullname" . }}-config
+            {{- if .Values.externalSecret.enabled }}
+            - secretRef:
+                name: {{ .Values.externalSecret.secretName }}
+            {{- end }}
+          {{- if .Values.pvc.enabled }}
+          volumeMounts:
+            - name: poi-data
+              mountPath: {{ .Values.pvc.mountPath }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if eq .Values.probe.type "http" }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probe.path }}
+              port: {{ .Values.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.probe.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probe.path }}
+              port: {{ .Values.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.probe.failureThreshold }}
+          {{- else }}
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.probe.failureThreshold }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.port }}
+            initialDelaySeconds: {{ .Values.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.probe.failureThreshold }}
+          {{- end }}
+      {{- if .Values.pvc.enabled }}
+      volumes:
+        - name: poi-data
+          persistentVolumeClaim:
+            claimName: {{ include "chart.fullname" . }}-poi-data
+      {{- end }}

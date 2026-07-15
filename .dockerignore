@@ -1,0 +1,40 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker
+Dockerfile
+.dockerignore
+
+# CI/Git
+.git/
+.gitignore
+
+# Keep data dir but not cached POI data
+data/poi/*.json

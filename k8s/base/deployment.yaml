@@ -1,0 +1,246 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maps-mcp-server
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: maps-mcp-server
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: jquad-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: maps-mcp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: maps-mcp-server
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values:
+                - "true"
+      imagePullSecrets:
+      - name: regcred-jquad-ai-assistant-agent
+      containers:
+      - name: maps-mcp-server
+        image: harbor.jquad.rocks/library/jquad-agent/jquad-agent-maps-mcp-server:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8007
+          name: http
+          protocol: TCP
+        env:
+        # ===========================================
+        # Server Configuration
+        # ===========================================
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: PORT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: LOG_LEVEL
+
+        # ===========================================
+        # Backend Services
+        # ===========================================
+        - name: VALHALLA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: VALHALLA_URL
+        - name: NOMINATIM_URL
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: NOMINATIM_URL
+        - name: NOMINATIM_RATE_LIMIT_RPS
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: NOMINATIM_RATE_LIMIT_RPS
+        - name: NOMINATIM_USER_AGENT
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: NOMINATIM_USER_AGENT
+
+        # ===========================================
+        # POI Data
+        # ===========================================
+        - name: POI_DATA_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: POI_DATA_PATH
+        - name: POI_DEFAULT_COLLECTION
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: POI_DEFAULT_COLLECTION
+        - name: POI_DEFAULT_BRAND
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: POI_DEFAULT_BRAND
+        - name: POI_DEFAULT_AREA
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: POI_DEFAULT_AREA
+        - name: MAX_MATRIX_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: MAX_MATRIX_SIZE
+
+        # ===========================================
+        # Overpass (POI ingest only)
+        # ===========================================
+        - name: OVERPASS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: OVERPASS_URL
+        - name: OVERPASS_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: OVERPASS_TIMEOUT
+
+        # ===========================================
+        # HTTP Client Configuration
+        # ===========================================
+        - name: HTTP_TIMEOUT_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: HTTP_TIMEOUT_SECONDS
+        - name: HTTP_CONNECT_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: HTTP_CONNECT_TIMEOUT
+
+        # ===========================================
+        # Keycloak JWT Authentication
+        # ===========================================
+        - name: KEYCLOAK_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: KEYCLOAK_ENABLED
+        - name: KEYCLOAK_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: KEYCLOAK_SERVER_URL
+        - name: KEYCLOAK_REALM
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: KEYCLOAK_REALM
+        - name: KEYCLOAK_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: KEYCLOAK_CLIENT_ID
+        - name: KEYCLOAK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: maps-mcp-secret
+              key: KEYCLOAK_CLIENT_SECRET
+
+        # ===========================================
+        # OpenTelemetry Configuration
+        # ===========================================
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: OTEL_EXPORTER_OTLP_ENDPOINT
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: OTEL_SERVICE_NAME
+        - name: OTEL_TRACES_EXPORTER
+          valueFrom:
+            configMapKeyRef:
+              name: maps-mcp-config
+              key: OTEL_TRACES_EXPORTER
+
+        volumeMounts:
+        # Persistent cache of ingested POIs (coordinates from Overpass/CSV).
+        - name: poi-data
+          mountPath: /app/data/poi
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 8007
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 8007
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: poi-data
+        persistentVolumeClaim:
+          claimName: maps-mcp-poi-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maps-mcp-server
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: maps-mcp-server
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: jquad-agent
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8007
+    targetPort: 8007
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: maps-mcp-server
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maps-mcp-poi-data
+  namespace: teams
+  labels:
+    app.kubernetes.io/name: maps-mcp-server
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi

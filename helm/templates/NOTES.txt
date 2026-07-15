@@ -1,0 +1,21 @@
+maps-mcp-server has been deployed.
+
+Namespace: {{ include "chart.namespace" . }}
+Service:   {{ include "chart.fullname" . }}:{{ .Values.port }}
+
+Secrets are synced from OpenBao by the External Secrets Operator:
+  - Image pull secret:  {{ .Values.imagePullSecret.name }}  ({{ .Values.imagePullSecret.vaultPath }})
+{{- if .Values.externalSecret.enabled }}
+  - App secrets:        {{ .Values.externalSecret.secretName }}  ({{ .Values.externalSecret.vaultPath }})
+{{- end }}
+
+The Deployment reads PORT={{ .Values.port }} and connects to the geo backends
+(Nominatim, Overpass, Valhalla) deployed in the geo namespace.
+
+Backend endpoints:
+  - Nominatim: {{ .Values.configMap.data.NOMINATIM_URL }}
+  - Overpass:  {{ .Values.configMap.data.OVERPASS_URL }}
+  - Valhalla:  {{ .Values.configMap.data.VALHALLA_URL }}
+
+Verify the deployment:
+  kubectl -n {{ include "chart.namespace" . }} rollout status deploy/{{ include "chart.fullname" . }}

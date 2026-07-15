@@ -1,0 +1,3 @@
+# Ingested POI caches are written here at runtime (see POI_DATA_PATH).
+# Source data (e.g. crawled hotel .md files) lives in the web-crawler-mcp-server
+# repo and is mounted into this directory at deploy time for ingestion.
