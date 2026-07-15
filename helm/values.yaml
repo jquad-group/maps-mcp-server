@@ -10,7 +10,7 @@ image:
   # tag: ""   # falls back to Chart.appVersion
   pullPolicy: Always
 
-port: 8007
+port: 8000
 
 replicas: 1
 

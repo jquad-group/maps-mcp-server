@@ -43,7 +43,7 @@ flowchart TB
     Agent["🤖 JQuad Agent<br/><b>Client</b><br/><i>Consumes the maps MCP server<br/>via skills/maps/SKILL.md<br/>Forwards user Bearer token</i>"]
 
     %% ============ The maps server ============
-    subgraph MapsServer["maps-mcp-server  (FastMCP, Python, :8007)"]
+    subgraph MapsServer["maps-mcp-server  (FastMCP, Python, :8000)"]
         direction TB
 
         Tools["🔧 MCP Tools  (9 exposed)<br/><i>geocode · reverse_geocode · isochrone<br/>route · distance_matrix · find_within<br/>ingest_poi · list_poi · maps_health</i>"]
@@ -83,7 +83,7 @@ flowchart TB
     OSMData[("🗺️ OSM Extract<br/>Germany PBF<br/><i>shared by Valhalla + Nominatim</i>")]
 
     %% ============ Connections ============
-    Agent -- "MCP/HTTP :8007<br/>(Bearer token)" --> Tools
+    Agent -- "MCP/HTTP :8000<br/>(Bearer token)" --> Tools
 
     Tools -- "geocode / reverse_geocode<br/>resolve place names" --> Nominatim
     Orchestrator -- "isochrone polygon<br/>distance matrix · route" --> Valhalla
@@ -188,7 +188,7 @@ uv run pytest
 
 # 3. Boot the server (backends unreachable in dev, but tools are live)
 OTEL_SDK_DISABLED=true uv run python -m src.server
-# → http://127.0.0.1:8007/mcp
+# → http://127.0.0.1:8000/mcp
 ```
 
 For full local functionality you need Valhalla + Nominatim running. The
@@ -228,7 +228,7 @@ All config is via environment variables (read once at startup by
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `8007` | HTTP listen port. |
+| `PORT` | `8000` | HTTP listen port. |
 | `LOG_LEVEL` | `INFO` | Logging level. |
 | `VALHALLA_URL` | `http://valhalla.teams.svc.cluster.local:8002` | Valhalla base URL. |
 | `NOMINATIM_URL` | `http://nominatim.teams.svc.cluster.local:8080` | Nominatim base URL. |
@@ -255,14 +255,14 @@ The MCP protocol requires a Streamable HTTP handshake. Example:
 
 ```bash
 # 1. Initialize session
-INIT=$(curl -s -D /tmp/h -X POST http://localhost:8007/mcp \
+INIT=$(curl -s -D /tmp/h -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":"init"}')
 SID=$(grep -i mcp-session-id /tmp/h | tr -d '\r' | awk '{print $2}')
 
 # 2. Call a tool (geocode Nuremberg)
-curl -s -X POST http://localhost:8007/mcp \
+curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" \

@@ -32,11 +32,11 @@ RUN useradd --create-home --shell /bin/bash app && \
 USER app
 
 # Expose the application port
-EXPOSE 8007
+EXPOSE 8000
 
 # Health check disabled - MCP protocol requires specific headers
 # HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-#     CMD curl -f http://localhost:8007/mcp || exit 1
+#     CMD curl -f http://localhost:8000/mcp || exit 1
 
 # Set environment variables for production
 ENV PYTHONPATH=/app

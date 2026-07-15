@@ -1,7 +1,7 @@
 """Settings for the maps-mcp-server.
 
 Environment Variables:
-    PORT: HTTP port the MCP server listens on (default: 8007).
+    PORT: HTTP port the MCP server listens on (default: 8000).
     LOG_LEVEL: Logging level (default: INFO).
     VALHALLA_URL: Base URL of the Valhalla routing engine
         (default: http://valhalla.teams.svc.cluster.local:8002).
@@ -67,7 +67,7 @@ class MapsSettings:
         http_connect_timeout: Outbound HTTP connect timeout.
     """
 
-    port: int = 8007
+    port: int = 8000
     valhalla_url: str = DEFAULT_VALHALLA_URL
     nominatim_url: str = DEFAULT_NOMINATIM_URL
     nominatim_rate_limit_rps: float = 5.0
@@ -86,7 +86,7 @@ class MapsSettings:
     def from_env(cls) -> "MapsSettings":
         """Create settings from environment variables."""
         return cls(
-            port=int(os.getenv("PORT", "8007")),
+            port=int(os.getenv("PORT", "8000")),
             valhalla_url=os.getenv("VALHALLA_URL", DEFAULT_VALHALLA_URL).rstrip("/"),
             nominatim_url=os.getenv("NOMINATIM_URL", DEFAULT_NOMINATIM_URL).rstrip("/"),
             nominatim_rate_limit_rps=float(
