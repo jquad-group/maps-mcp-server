@@ -237,7 +237,11 @@ def build_brand_query(
     # Tolerant brand regex: collapse spaces to allow optional non-alnum
     # separators in the source tag ("Best Western", "Best-Western",
     # "Best_Western"). Already-regex-special chars are escaped.
-    brand_token = re.escape(brand).replace(r"\ ", r"[\\s_-]?")
+    # Escape regex metacharacters, then replace escaped spaces with a
+    # character class that matches space/underscore/hyphen. Use a literal
+    # space in the class — Overpass uses POSIX regex which does NOT support
+    # \s (the \s escape causes the query to silently match zero results).
+    brand_token = re.escape(brand).replace(r"\ ", r"[ _-]?")
     brand_regex = brand_token  # case-insensitive flag added in QL with ',i'
 
     def _country_clause(code: str) -> str:
