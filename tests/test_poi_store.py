@@ -80,6 +80,25 @@ class TestPOIStore:
         # Deleting again returns False.
         assert store.delete("hotels") is False
 
+    def test_clear_empties_collection(self, store: POIStore):
+        store.upsert_many("hotels", [_poi("a", "Alpha"), _poi("b", "Beta")])
+        store.clear("hotels")
+        assert store.load("hotels") == []
+
+    def test_clear_then_upsert_replaces(self, store: POIStore):
+        # The accumulation bug: ingest, clear, re-ingest -> only the new POIs.
+        store.upsert_many("hotels", [_poi("old", "Old"), _poi("stale", "Stale")])
+        store.clear("hotels")
+        store.upsert_many("hotels", [_poi("new1", "New1"), _poi("new2", "New2")])
+        ids = {p.place_id for p in store.load("hotels")}
+        assert ids == {"new1", "new2"}
+
+    def test_clear_leaves_collection_present(self, store: POIStore):
+        # Unlike delete(), clear() keeps the file so subsequent upserts repopulate.
+        store.upsert_many("hotels", [_poi("a", "Alpha")])
+        store.clear("hotels")
+        assert store._path("hotels").exists()  # noqa: SLF001 — test-only
+
     def test_collection_name_sanitized_no_traversal(self, store: POIStore):
         # Non-alphanumeric chars are stripped, so a traversal attempt cannot
         # escape the base directory: "../escape" -> "..escape", which resolves

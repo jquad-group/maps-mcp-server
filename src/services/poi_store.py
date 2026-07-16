@@ -136,6 +136,17 @@ class POIStore:
             return True
         return False
 
+    def clear(self, collection: str) -> None:
+        """Remove all POIs from a collection, leaving an empty collection.
+
+        Unlike :meth:`delete` (which removes the file), this keeps the
+        collection present on disk as an empty list — so a subsequent
+        ``upsert_many`` repopulates it cleanly. Used by ``ingest_poi`` when
+        ``replace=True`` to avoid accumulating stale POIs from a previous
+        ingest with a different area.
+        """
+        self._save(collection, [])
+
 
 def make_place_id(source_url: str) -> str:
     """Deterministic place_id from a source URL (sha1)."""

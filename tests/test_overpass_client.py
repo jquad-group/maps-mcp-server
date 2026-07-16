@@ -59,9 +59,11 @@ class TestBuildBrandQuery:
         assert '",i]' in q  # the case-insensitive regex flag
 
     def test_brand_space_widened_to_regex(self):
-        # Space in brand becomes [s_-]? so Best-Western / Best_Western match.
+        # Space in brand becomes [ _-]? so Best-Western / Best_Western match.
+        # (A literal char class, not \s — \s can match newlines which Overpass
+        # QL mishandles.)
         q = build_brand_query("Best Western", area="europe")
-        assert r"[\\s_-]?" in q
+        assert r"[ _-]?" in q
 
     def test_timeout_embedded(self):
         q = build_brand_query("Best Western", area="europe", timeout=120)

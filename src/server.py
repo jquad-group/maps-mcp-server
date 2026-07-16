@@ -383,6 +383,7 @@ async def ingest_poi(
     collection: str | None = None,
     brand: str | None = None,
     area: str | None = None,
+    replace: bool = False,
 ) -> dict[str, Any]:
     """Populate a POI collection from OpenStreetMap or a curated file.
 
@@ -391,12 +392,14 @@ async def ingest_poi(
     * ``"overpass"`` *(default)* — query OpenStreetMap via Overpass for every
       feature tagged ``brand=<brand>`` inside ``<area>``. Returns hotels with
       **exact coordinates** already attached (no geocoding needed). This is a
-      one-shot cache-fill — run it once at deploy time, then ``find_within``
-      reads the cache with zero Overpass dependency.
+      cache-fill — run it, then ``find_within`` reads the cache with zero
+      Overpass dependency. Re-running with the **same** area is idempotent
+      (dedup by ``place_id``); re-running with a **different** area
+      **accumulates** POIs into the collection unless ``replace=True``.
 
     * ``"csv:<path>"`` or ``"json:<path>"`` — import a curated file. The file
-      is read once and cached; re-running is idempotent. Use this to curate
-      a checked-in list, or to supplement Overpass results.
+      is read once and cached. Use this to curate a checked-in list, or to
+      supplement Overpass results.
 
     Args:
         source: ``"overpass"`` (default), or ``"csv:<path>"`` / ``"json:<path>"``.
@@ -428,14 +431,23 @@ async def ingest_poi(
 
             A bare string with no prefix is treated as a country code (so
             ``"München"`` raises an error — use ``"name:München"``).
+        replace: If ``True``, clear the collection **before** ingesting, so
+            only the new POIs remain (default ``False``). Re-ingesting with a
+            *different* area accumulates POIs by default — e.g. an
+            ``"around:30000,..."`` query after an earlier ``"europe"`` ingest
+            would leave both sets in the collection. Set ``replace=True``
+            whenever you re-run with a different area to avoid stale POIs
+            (e.g. hotels from another city) polluting subsequent
+            ``find_within`` / ``list_poi`` results. Re-running with the same
+            area does not need this (it dedups by ``place_id``).
 
     Returns:
         ``{"source": str, "collection": str, "ingested": int, "total": int}``.
         On error: ``{"error": str, "source": str, "collection": str}``.
     """
     coll = collection or settings.poi_default_collection
-    logger.info("ingest_poi(source=%s, collection=%s, brand=%s, area=%s)",
-                source, coll, brand, area)
+    logger.info("ingest_poi(source=%s, collection=%s, brand=%s, area=%s, replace=%s)",
+                source, coll, brand, area, replace)
     try:
         if source == "overpass" or source.startswith("overpass:"):
             pois = await _ingest_from_overpass(
@@ -456,6 +468,10 @@ async def ingest_poi(
     except (OverpassError, ImportError_, FileNotFoundError, ValueError) as exc:
         return {"error": str(exc), "source": source, "collection": coll}
 
+    # Clear the collection first when replacing, so POIs from a previous
+    # ingest (e.g. a different area) don't accumulate alongside the new ones.
+    if replace:
+        poi_store.clear(coll)
     written = poi_store.upsert_many(coll, pois)
     return {
         "source": source,
