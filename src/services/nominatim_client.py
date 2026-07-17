@@ -27,6 +27,16 @@ class GeocodeResult:
     display_name: str
     raw: dict[str, Any] | None = None
 
+    @property
+    def coord(self) -> tuple[float, float]:
+        """Return coordinates as a ``(lat, lon)`` tuple.
+
+        Matches :attr:`POI.coord` so callers can treat both types uniformly
+        (e.g. ``valhalla.route(o.coord, d.coord)`` works whether ``o`` is a
+        ``GeocodeResult`` or a ``POI``).
+        """
+        return (self.lat, self.lon)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "lat": self.lat,
