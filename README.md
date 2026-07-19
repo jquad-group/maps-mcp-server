@@ -12,7 +12,7 @@ It runs on top of two **self-hosted, free, OpenStreetMap-based** backends:
   reachable within X minutes), and time/distance matrices.
 - **Nominatim** — geocoder turning place names / addresses into coordinates.
 
-The POIs it searches over default to the **Best Western Europe** hotel set,
+The POIs it searches over default to the **Best Western DACH** hotel set,
 loaded from **OpenStreetMap** via Overpass (coordinates come ready-made
 from OSM — no geocoding step). A curated CSV/JSON file can also be
 imported to supplement OSM coverage. Any ad-hoc list of places can be
@@ -79,7 +79,7 @@ flowchart TB
     OverpassAPI["📡 Overpass API<br/><b>POI ingest source (read-only)</b><br/><i>overpass-api.de (public)<br/>or self-hosted instance</i>"]
 
     %% ============ Data stores ============
-    POIPVC[("📁 POI Data PVC<br/>/app/data/poi<br/><i>bestwestern-eu.json cache</i>")]
+    POIPVC[("📁 POI Data PVC<br/>/app/data/poi<br/><i>bestwestern-de.json cache</i>")]
     OSMData[("🗺️ OSM Extract<br/>Germany PBF<br/><i>shared by Valhalla + Nominatim</i>")]
 
     %% ============ Connections ============
@@ -340,7 +340,7 @@ All config is via environment variables (read once at startup by
 | `OVERPASS_URL` | `https://overpass-api.de/api/interpreter` | Overpass endpoint for POI ingest. Self-host or use a paid mirror for production. |
 | `OVERPASS_TIMEOUT` | `90.0` | Per-request Overpass timeout (Europe brand queries can be slow). |
 | `POI_DATA_PATH` | `./data/poi` | Directory for ingested POI JSON caches. |
-| `POI_DEFAULT_COLLECTION` | `bestwestern-eu` | Default collection for `find_within` / `list_poi`. |
+| `POI_DEFAULT_COLLECTION` | `bestwestern-de` | Default collection for `find_within` / `list_poi`. |
 | `POI_DEFAULT_BRAND` | `Best Western` | Default brand for `ingest_poi(source="overpass")`. |
 | `POI_DEFAULT_AREA` | `europe` | Default geographic scope for Overpass ingest (`europe`, a country code, a list, or a bbox). |
 | `MAX_MATRIX_SIZE` | `50` | Max destinations per Valhalla matrix call (chunked above this). |
@@ -381,7 +381,7 @@ After deploying and ingesting the hotel set:
 ```bash
 # 1. Ingest (one-time / on refresh) — Best Western, all of Europe, from OSM
 #    tools/call ingest_poi {source: "overpass"}
-# → {"source": "overpass", "collection": "bestwestern-eu", "ingested": 180, "total": 180}
+# → {"source": "overpass", "collection": "bestwestern-de", "ingested": 180, "total": 180}
 
 # 2. Ask: Best Western within 1 hour of Nuremberg
 #    tools/call find_within {center: "Nuremberg", within: "1 hour"}
