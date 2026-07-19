@@ -165,28 +165,41 @@ async def _filter_by_distance(
                 out.append(Match(poi, distance_km=d, time_seconds=None, inside_isochrone=None))
         return out
 
-    # Road distance via chunked Valhalla matrix.
-    out = []
-    for chunk in _chunked(candidates, max_matrix_size):
-        matrix = await valhalla.sources_to_targets(
-            sources=[(center.lat, center.lon)],
-            targets=[p.coord for p in chunk],
-            costing=costing,
-        )
-        for poi, row in zip(chunk, matrix):
-            if not row:
-                continue
-            cell: MatrixCell = row[0]
-            if cell.distance_km <= budget_km:
-                out.append(
-                    Match(
-                        poi,
-                        distance_km=cell.distance_km,
-                        time_seconds=cell.time_seconds,
-                        inside_isochrone=None,
+    # Road distance via chunked Valhalla matrix — fall back to crow if
+    # Valhalla is unavailable (not deployed, timeout, etc.).
+    try:
+        out = []
+        for chunk in _chunked(candidates, max_matrix_size):
+            matrix = await valhalla.sources_to_targets(
+                sources=[(center.lat, center.lon)],
+                targets=[p.coord for p in chunk],
+                costing=costing,
+            )
+            for poi, row in zip(chunk, matrix):
+                if not row:
+                    continue
+                cell: MatrixCell = row[0]
+                if cell.distance_km <= budget_km:
+                    out.append(
+                        Match(
+                            poi,
+                            distance_km=cell.distance_km,
+                            time_seconds=cell.time_seconds,
+                            inside_isochrone=None,
+                        )
                     )
-                )
-    return out
+        return out
+    except Exception as exc:
+        # Valhalla unavailable — fall back to great-circle (crow) distance.
+        import logging
+        logging.getLogger(__name__).warning(
+            "Valhalla road-distance failed (%s) — falling back to crow distance", exc)
+        out = []
+        for poi in candidates:
+            d = haversine_km(center.lat, center.lon, poi.lat, poi.lon)
+            if d <= budget_km:
+                out.append(Match(poi, distance_km=d, time_seconds=None, inside_isochrone=None))
+        return out
 
 
 async def _filter_by_time(

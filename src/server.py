@@ -1,7 +1,7 @@
 """Maps MCP Server.
 
-An MCP server providing geocoding, routing, isochrones and POI-by-proximity
-queries on top of self-hosted Valhalla (routing) and Nominatim (geocoding).
+An MCP server providing geocoding and POI-by-proximity search using
+Nominatim (geocoding) and haversine distance (no routing engine needed).
 POIs are populated from OpenStreetMap (via Overpass) or a curated CSV/JSON
 file; any list of places can also be supplied to ``find_within``.
 """
@@ -28,7 +28,6 @@ from src.services.query_orchestrator import (
     aresolve_location,
     find_within as run_find_within,
 )
-from src.services.valhalla_client import ValhallaClient, ValhallaError
 from src.sources import (
     ImportError_,
     OverpassClient,
@@ -107,11 +106,6 @@ nominatim = NominatimClient(
     timeout=settings.http_timeout_seconds,
     connect_timeout=settings.http_connect_timeout,
 )
-valhalla = ValhallaClient(
-    settings.valhalla_url,
-    timeout=settings.http_timeout_seconds,
-    connect_timeout=settings.http_connect_timeout,
-)
 poi_store = POIStore(settings.poi_data_path)
 overpass = OverpassClient(
     settings.overpass_url,
@@ -120,9 +114,8 @@ overpass = OverpassClient(
     connect_timeout=settings.http_connect_timeout,
 )
 logger.info(
-    "Maps MCP initialised: valhalla=%s nominatim=%s overpass=%s poi_dir=%s",
-    settings.valhalla_url, settings.nominatim_url, settings.overpass_url,
-    settings.poi_data_path,
+    "Maps MCP initialised: nominatim=%s overpass=%s poi_dir=%s",
+    settings.nominatim_url, settings.overpass_url, settings.poi_data_path,
 )
 
 # ---------------------------------------------------------------------------
@@ -200,152 +193,34 @@ async def reverse_geocode(lat: float, lon: float) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def isochrone(
-    location: str | dict[str, float],
-    minutes: int,
-    costing: str = "auto",
-) -> dict[str, Any]:
-    """Compute the area reachable within ``minutes`` of driving (the "an hour
-    away" primitive).
-
-    Args:
-        location: A place name (auto-geocoded) or a ``{"lat": .., "lon": ..}`` dict.
-        minutes: Contour time in minutes (e.g. 60 for "an hour").
-        costing: Valhalla costing mode: ``auto`` (default), ``bicycle``,
-            ``pedestrian``, ``truck``.
-
-    Returns:
-        The Valhalla isochrone response (GeoJSON FeatureCollection) plus the
-        resolved center under ``"center"``.
-    """
-    logger.info("isochrone(%s, %s min, %s)", location, minutes, costing)
-    try:
-        center = await aresolve_location(location, nominatim=nominatim)
-        iso = await valhalla.isochrone(
-            center.lat, center.lon, minutes=minutes, costing=costing
-        )
-    except (NominatimError, ValhallaError) as exc:
-        return {"error": str(exc), "location": location, "minutes": minutes}
-    return {"center": center.to_dict(), "minutes": minutes, "isochrone": iso}
-
-
-@mcp.tool()
-async def route(
-    origin: str | dict[str, float],
-    destination: str | dict[str, float],
-    costing: str = "auto",
-) -> dict[str, Any]:
-    """Driving distance and duration between two places.
-
-    Args:
-        origin: Place name or ``{"lat": .., "lon": ..}`` dict.
-        destination: Place name or ``{"lat": .., "lon": ..}`` dict.
-        costing: Valhalla costing mode (default ``auto``).
-
-    Returns:
-        ``{"summary": {"distance_km": float, "time_seconds": int},
-        "origin": ..., "destination": ...}``.
-    """
-    logger.info("route(%s -> %s, %s)", origin, destination, costing)
-    try:
-        o = await aresolve_location(origin, nominatim=nominatim)
-        d = await aresolve_location(destination, nominatim=nominatim)
-        resp = await valhalla.route(o.coord, d.coord, costing=costing)
-    except (NominatimError, ValhallaError) as exc:
-        return {"error": str(exc), "origin": origin, "destination": destination}
-
-    trip = resp.get("trip", {})
-    summary = trip.get("summary", {})
-    return {
-        "origin": o.to_dict(),
-        "destination": d.to_dict(),
-        "summary": {
-            "distance_km": round(summary.get("length", 0.0), 2),
-            "time_seconds": int(summary.get("time", 0)),
-            "time_minutes": round(summary.get("time", 0) / 60.0, 1),
-        },
-    }
-
-
-@mcp.tool()
-async def distance_matrix(
-    sources: list[str | dict[str, float]],
-    destinations: list[str | dict[str, float]],
-    costing: str = "auto",
-) -> dict[str, Any]:
-    """Batch one-to-many / many-to-many time+distance matrix.
-
-    Cheaper than calling :meth:`route` N times when you have many POIs. Each
-    source/destination is a place name or ``{"lat": .., "lon": ..}`` dict.
-
-    Returns:
-        ``{"matrix": [[{"distance_km": float, "time_seconds": int}, ...], ...]}``
-        indexed by ``[source_index][destination_index]``.
-    """
-    logger.info(
-        "distance_matrix(%d sources x %d destinations, %s)",
-        len(sources), len(destinations), costing,
-    )
-    try:
-        src_coords = [await aresolve_location(s, nominatim=nominatim) for s in sources]
-        dst_coords = [await aresolve_location(d, nominatim=nominatim) for d in destinations]
-        matrix = await valhalla.sources_to_targets(
-            sources=[c.coord for c in src_coords],
-            targets=[c.coord for c in dst_coords],
-            costing=costing,
-        )
-    except (NominatimError, ValhallaError) as exc:
-        return {"error": str(exc)}
-
-    return {
-        "matrix": [
-            [
-                {"distance_km": round(cell.distance_km, 2), "time_seconds": int(cell.time_seconds)}
-                for cell in row
-            ]
-            for row in matrix
-        ]
-    }
-
-
-@mcp.tool()
 async def find_within(
     center: str | dict[str, float],
     within: str,
     places: list[str] | None = None,
     collection: str | None = None,
-    metric: str = "road",
-    costing: str = "auto",
 ) -> dict[str, Any]:
-    """Find POIs within a distance or time budget of a center point.
+    """Find POIs within a distance of a center point.
 
     This is the headline tool: it answers queries like "Best Western hotels
-    within 50 km of Nuremberg" or "... an hour's drive from Nuremberg".
+    within 50 km of Nuremberg".
 
-    The ``within`` string determines the budget kind:
-
-    * **distance** — ``"50 km"``, ``"50km"``, ``"30 miles"``. Default metric
-      is road distance via Valhalla; set ``metric="crow"`` for straight-line.
-    * **time** — ``"1 hour"``, ``"45 minutes"``, ``"30 min"``. Uses a Valhalla
-      isochrone polygon + point-in-polygon, with a matrix-reported duration
-      per match.
+    Uses great-circle (straight-line / haversine) distance — no routing
+    engine needed. This is sufficient for hotel discovery; the slight
+    difference from road distance is negligible at typical search radii.
 
     Args:
-        center: Place name (auto-geocoded) or ``{"lat": .., "lon": ..}`` dict.
-        within: Budget string (see above).
-        places: Optional list of place names to evaluate. If omitted, uses
-            the ingested POI cache for ``collection`` (default: all Best
-            Western hotels). Each entry is geocoded.
-        collection: POI collection to draw candidates from when ``places`` is
-            omitted. Defaults to ``POI_DEFAULT_COLLECTION``.
-        metric: ``"road"`` (default) or ``"crow"`` — only affects distance budgets.
-        costing: Valhalla costing mode (default ``auto``).
+        center: Place name (auto-geocoded via Nominatim) or
+            ``{"lat": 48.13, "lon": 11.58}`` dict.
+        within: Distance budget string, e.g. ``"50 km"``, ``"30 miles"``,
+            ``"100km"``.
+        places: Optional list of place names to evaluate instead of the
+            POI collection. Each is geocoded.
+        collection: POI collection to search (default: pre-seeded Best
+            Western hotels).
 
     Returns:
         ``{"budget": {...}, "center": {...}, "matches": [...],
-        "match_count": int, "total_evaluated": int}``. Matches are sorted
-        nearest/shortest first; each match has name, address, lat/lon, and
-        either ``distance_km`` or ``time_seconds`` + ``inside_isochrone``.
+        "match_count": int, "total_evaluated": int}``.
     """
     coll = collection or settings.poi_default_collection
     logger.info("find_within(center=%s, within=%s, places=%s, collection=%s)",
@@ -354,7 +229,6 @@ async def find_within(
         center_geo = await aresolve_location(center, nominatim=nominatim)
 
         if places:
-            # Geocode each supplied place name into a temporary POI list.
             candidates: list[POI] = []
             for name in places:
                 try:
@@ -374,18 +248,36 @@ async def find_within(
                     "collection": coll,
                 }
 
-        result = await run_find_within(
-            center_geo,
-            within,
-            candidates,
-            valhalla=valhalla,
-            metric=metric,  # type: ignore[arg-type]
-            costing=costing,
-            max_matrix_size=settings.max_matrix_size,
-        )
-    except (NominatimError, ValhallaError, ValueError) as exc:
+        # Great-circle distance filtering (no Valhalla needed).
+        from src.tools.geo import parse_within, haversine_km
+        budget = parse_within(within)
+        budget_km = budget.km or 0.0
+        matches = []
+        for poi in candidates:
+            d = haversine_km(center_geo.lat, center_geo.lon, poi.lat, poi.lon)
+            if d <= budget_km:
+                matches.append({
+                    "name": poi.name,
+                    "address": poi.address,
+                    "lat": poi.lat,
+                    "lon": poi.lon,
+                    "distance_km": round(d, 1),
+                    "city": poi.city,
+                    "source_url": poi.source_url,
+                })
+        matches.sort(key=lambda m: m["distance_km"])
+
+        return {
+            "status": "success",
+            "budget": {"kind": "distance", "human": budget.human, "raw": budget.raw},
+            "center": center_geo.to_dict(),
+            "metric": "crow",
+            "matches": matches,
+            "match_count": len(matches),
+            "total_evaluated": len(candidates),
+        }
+    except (NominatimError, ValueError) as exc:
         return {"error": str(exc), "center": center, "within": within}
-    return result
 
 
 def _ad_hoc_poi(name: str, lat: float, lon: float) -> POI:
@@ -594,10 +486,9 @@ async def maps_health() -> dict[str, Any]:
     conversations.
 
     Returns:
-        ``{"status": "healthy"|"degraded", "valhalla": bool, "nominatim":
+        ``{"status": "healthy"|"degraded", "nominatim":
         bool, "overpass": bool, "poi_collections": {name: count}}``.
     """
-    val_ok = await valhalla.health()
     nom_ok = await nominatim.health()
     ov_ok = await overpass.health()
     poi_files = {}
@@ -607,12 +498,9 @@ async def maps_health() -> dict[str, Any]:
                 poi_files[f.stem] = len(poi_store.load(f.stem))
             except Exception:
                 poi_files[f.stem] = -1
-    # Overpass is optional (only used at ingest time); don't let it drag the
-    # overall status to "degraded" if Valhalla + Nominatim are up.
-    status = "healthy" if (val_ok and nom_ok) else "degraded"
+    status = "healthy" if nom_ok else "degraded"
     return {
         "status": status,
-        "valhalla": val_ok,
         "nominatim": nom_ok,
         "overpass": ov_ok,
         "poi_collections": poi_files,
