@@ -35,6 +35,7 @@ from src.sources import (
     OverpassError,
     overpass_to_poi,
     import_file,
+    import_json,
 )
 
 
@@ -123,6 +124,31 @@ logger.info(
     settings.valhalla_url, settings.nominatim_url, settings.overpass_url,
     settings.poi_data_path,
 )
+
+# ---------------------------------------------------------------------------
+# Auto-seed: on startup, if the default Best Western collection is empty,
+# import the pre-geocoded hotel coordinates bundled in the image (./seed/).
+# This bypasses OSM/Overpass gaps (Austria/Switzerland) and ensures all
+# 164 Best Western hotels from the scraped corpus are findable by distance
+# immediately — no ingest_poi call needed.
+# ---------------------------------------------------------------------------
+_seed_path = Path(__file__).resolve().parent.parent / "seed" / "bestwestern-hotels.json"
+if _seed_path.exists():
+    _seed_coll = settings.poi_default_collection
+    _existing = poi_store.load(_seed_coll)
+    if not _existing:
+        logger.info("Auto-seeding collection '%s' from %s ...", _seed_coll, _seed_path)
+        try:
+            _seed_pois = import_json(_seed_path, collection=_seed_coll)
+            _written = poi_store.upsert_many(_seed_coll, _seed_pois)
+            logger.info("Auto-seeded %d Best Western hotels into '%s'", _written, _seed_coll)
+        except Exception as exc:
+            logger.warning("Auto-seed failed (non-fatal): %s", exc)
+    else:
+        logger.info("Collection '%s' already has %d POIs — skipping auto-seed",
+                     _seed_coll, len(_existing))
+else:
+    logger.debug("No seed file at %s — skipping auto-seed", _seed_path)
 
 
 # ---------------------------------------------------------------------------
@@ -389,15 +415,29 @@ async def ingest_poi(
 ) -> dict[str, Any]:
     """Populate a POI collection from OpenStreetMap or a curated file.
 
+    **This is a one-time admin operation** to fill the cache. For querying
+    hotels by distance, use ``find_within`` instead — it reads the existing
+    cache and does NOT re-query Overpass. Only call ``ingest_poi`` if the
+    collection is empty or you need to refresh it with new data.
+
+    **Important:** Best Western hotels are already pre-seeded in the default
+    collection (``bestwestern-de``) with 164 hotels covering Germany,
+    Austria, and Switzerland. Do NOT call ``ingest_poi`` for Best Western
+    — use ``find_within`` directly. Only use ``ingest_poi`` for OTHER POI
+    types (restaurants, pharmacies, gas stations, other hotel brands).
+
     The ``source`` argument chooses where the POIs come from:
 
     * ``"overpass"`` *(default)* — query OpenStreetMap via Overpass for every
       feature tagged ``brand=<brand>`` inside ``<area>``. Returns hotels with
       **exact coordinates** already attached (no geocoding needed). This is a
-      cache-fill — run it, then ``find_within`` reads the cache with zero
+      cache-fill — run it once, then ``find_within`` reads the cache with zero
       Overpass dependency. Re-running with the **same** area is idempotent
       (dedup by ``place_id``); re-running with a **different** area
       **accumulates** POIs into the collection unless ``replace=True``.
+      **Warning:** OSM coverage varies by region (poor in Austria/Switzerland).
+      If the collection already has data, prefer ``find_within`` over
+      re-ingesting.
 
     * ``"csv:<path>"`` or ``"json:<path>"`` — import a curated file. The file
       is read once and cached. Use this to curate a checked-in list, or to

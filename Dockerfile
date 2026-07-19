@@ -22,6 +22,10 @@ RUN uv sync --no-dev --no-install-project || uv pip install -e .
 # Copy application source code
 COPY src/ ./src/
 
+# Copy seed data (Best Western hotels with coordinates, geocoded from
+# scraped addresses — bypasses OSM gaps in Austria/Switzerland)
+COPY helm/seed/ ./seed/
+
 # Now install the project in editable mode
 RUN uv pip install --no-deps -e .
 
