@@ -144,7 +144,7 @@ async def geocode(query: str) -> dict[str, Any]:
     """
     logger.info("geocode(%s)", query)
     try:
-        result = await nominatim.geocode(query, countrycodes="de")
+        result = await nominatim.geocode(query)
     except NominatimError as exc:
         return {"error": str(exc), "query": query}
     return result.to_dict()
