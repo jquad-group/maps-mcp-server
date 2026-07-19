@@ -25,7 +25,7 @@ configMap:
     NOMINATIM_USER_AGENT: "jquad-maps-mcp"
     OVERPASS_TIMEOUT: "90.0"
     POI_DATA_PATH: "/app/data/poi"
-    POI_DEFAULT_COLLECTION: "bestwestern-eu"
+    POI_DEFAULT_COLLECTION: "bestwestern-de"
     POI_DEFAULT_BRAND: "Best Western"
     POI_DEFAULT_AREA: "germany"
     MAX_MATRIX_SIZE: "50"
