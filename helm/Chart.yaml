@@ -2,8 +2,8 @@ apiVersion: v2
 name: maps-mcp-server
 description: Helm chart for the maps MCP server (geocoding, routing, POI search).
 type: application
-version: 1.5.0
-appVersion: "v1.5.0"
+version: 1.5.1
+appVersion: "v1.5.1"
 keywords:
   - mcp
   - maps
