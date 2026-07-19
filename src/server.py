@@ -126,22 +126,25 @@ logger.info(
 )
 
 # ---------------------------------------------------------------------------
-# Auto-seed: on startup, if the default Best Western collection is empty,
-# import the pre-geocoded hotel coordinates bundled in the image (./seed/).
-# This bypasses OSM/Overpass gaps (Austria/Switzerland) and ensures all
-# 164 Best Western hotels from the scraped corpus are findable by distance
+# Auto-seed: on startup, if the Best Western collection is empty (or has
+# fewer than 50 POIs — indicating stale/partial Overpass data), import the
+# pre-geocoded hotel coordinates bundled in the image (./seed/). This
+# bypasses OSM/Overpass gaps (Austria/Switzerland) and ensures all 164
+# Best Western hotels from the scraped corpus are findable by distance
 # immediately — no ingest_poi call needed.
 # ---------------------------------------------------------------------------
 _seed_path = Path(__file__).resolve().parent.parent / "seed" / "bestwestern-hotels.json"
+_seed_coll = "bestwestern-de"  # always seed this collection name (not the default)
 if _seed_path.exists():
-    _seed_coll = settings.poi_default_collection
     _existing = poi_store.load(_seed_coll)
-    if not _existing:
-        logger.info("Auto-seeding collection '%s' from %s ...", _seed_coll, _seed_path)
+    if len(_existing) < 50:
+        logger.info("Auto-seeding collection '%s' (%d existing → replacing with seed) ...",
+                     _seed_coll, len(_existing))
         try:
             _seed_pois = import_json(_seed_path, collection=_seed_coll)
             _written = poi_store.upsert_many(_seed_coll, _seed_pois)
-            logger.info("Auto-seeded %d Best Western hotels into '%s'", _written, _seed_coll)
+            logger.info("Auto-seeded %d Best Western hotels into '%s' (replaced %d stale POIs)",
+                         _written, _seed_coll, len(_existing))
         except Exception as exc:
             logger.warning("Auto-seed failed (non-fatal): %s", exc)
     else:

@@ -75,7 +75,7 @@ class MapsSettings:
     overpass_url: str = DEFAULT_OVERPASS_URL
     overpass_timeout: float = 90.0
     poi_data_path: Path = Path("./data/poi")
-    poi_default_collection: str = "bestwestern-eu"
+    poi_default_collection: str = "bestwestern-de"
     poi_default_brand: str = "Best Western"
     poi_default_area: str = "europe"
     max_matrix_size: int = 50
@@ -97,7 +97,7 @@ class MapsSettings:
             overpass_timeout=float(os.getenv("OVERPASS_TIMEOUT", "90.0")),
             poi_data_path=Path(os.getenv("POI_DATA_PATH", "./data/poi")),
             poi_default_collection=os.getenv(
-                "POI_DEFAULT_COLLECTION", "bestwestern-eu"
+                "POI_DEFAULT_COLLECTION", "bestwestern-de"
             ),
             poi_default_brand=os.getenv("POI_DEFAULT_BRAND", "Best Western"),
             poi_default_area=os.getenv("POI_DEFAULT_AREA", "europe"),
