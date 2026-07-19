@@ -382,7 +382,7 @@ async def ingest_poi(
     source: str = "overpass",
     collection: str | None = None,
     brand: str | None = None,
-    area: str | None = None,
+    area: str | list[str] | None = None,
     replace: bool = False,
 ) -> dict[str, Any]:
     """Populate a POI collection from OpenStreetMap or a curated file.
@@ -446,6 +446,12 @@ async def ingest_poi(
         On error: ``{"error": str, "source": str, "collection": str}``.
     """
     coll = collection or settings.poi_default_collection
+    # Normalize area to a string: if the caller passes a list (e.g.
+    # ["DE","AT","CH"]), JSON-encode it so _parse_area can handle it as the
+    # documented JSON-list form. This makes the tool tolerant of both
+    # string and list inputs.
+    if isinstance(area, list):
+        area = json.dumps(area)
     logger.info("ingest_poi(source=%s, collection=%s, brand=%s, area=%s, replace=%s)",
                 source, coll, brand, area, replace)
     try:
