@@ -145,6 +145,109 @@ query time with zero Overpass dependency.
 
 ---
 
+## POI population: Overpass vs geocoded import
+
+There are **two ways** to populate the POI collection, and the choice
+matters for data coverage:
+
+### Option 1: Overpass (from OpenStreetMap)
+
+```python
+ingest_poi(source="overpass", brand="Best Western", area="around:50000,48.13,11.58")
+```
+
+Queries OpenStreetMap for every feature tagged `brand=Best Western` in the
+given area. Coordinates come ready-made from OSM (no geocoding needed).
+
+**Limitation:** OSM coverage varies by region. In well-mapped areas
+(Germany) this works well, but poorly-mapped areas (parts of Austria,
+Switzerland) return incomplete results. For example, a 50 km radius around
+Lindau (Bodensee) returns only 2 hotels from Overpass, even though 3 Best
+Westerns exist within that range — the Feldkirch (Austria) hotel is simply
+not tagged in OSM.
+
+### Option 2: Geocoded import (from scraped address data) — recommended for Best Western
+
+```python
+ingest_poi(source="json:/path/to/hotels_geocoded.json", replace=True)
+```
+
+Imports a pre-built JSON file of hotels with coordinates obtained by
+geocoding the scraped address data (street + postal code + city) via
+Nominatim. This **bypasses OSM gaps entirely** because every hotel in the
+scraped corpus gets a coordinate, regardless of whether OSM knows about it.
+
+**How the geocoded file is built:**
+
+1. The scraper (`/home/rannox/bwh/enrich_hotels.py`) produces
+   `hotel_data.jsonl` — 178 hotels with structured addresses
+   (`street`, `postal_code`, `city`, `phone_country_code`).
+2. The geocoding script (`/home/rannox/bwh/geocode_hotels.py`)
+   reads each address, queries Nominatim, and writes
+   `hotels_geocoded.json` — a list of `{name, lat, lon, street, postcode,
+   city, country, brand}` objects in the JSON import format.
+3. The self-hosted Nominatim (`nominatim.geo.svc.cluster.local:8080`)
+   only has **Germany** data (built from a DE PBF extract). For hotels in
+   Austria (AT) and Switzerland (CH), the script falls back to the
+   **public Nominatim** (`nominatim.openstreetmap.org`) with a country
+   suffix for disambiguation.
+4. The resulting JSON file is imported via
+   `ingest_poi(source="json:...", replace=True)` into the POI collection
+   on the PVC (`/app/data/poi/bestwestern-de.json`).
+
+**To rebuild and reimport** (e.g., after a new scrape):
+
+```bash
+# 1. Geocode all hotels (run from inside the maps-mcp pod, or any pod
+#    with network access to the Nominatim service)
+python3 /home/rannox/bwh/geocode_hotels.py \
+  --input /home/rannox/bwh/hotel_data.jsonl \
+  --output /home/rannox/bwh/hotels_geocoded.json
+
+# 2. Copy the JSON file into the pod
+kubectl -n jq-mcp-servers cp /home/rannox/bwh/hotels_geocoded.json \
+  maps-mcp-server-XXX:/tmp/hotels_geocoded.json
+
+# 3. Import via the tool (direct Python call, bypasses MCP transport)
+kubectl -n jq-mcp-servers exec deploy/maps-mcp-server -- uv run python -c "
+import asyncio
+from src.server import ingest_poi
+asyncio.run(ingest_poi(
+    source='json:/tmp/hotels_geocoded.json',
+    collection='bestwestern-de',
+    replace=True
+))
+"
+
+# 4. Verify
+kubectl -n jq-mcp-servers exec deploy/maps-mcp-server -- uv run python -c "
+from src.server import poi_store
+print(len(poi_store.load('bestwestern-de')), 'POIs')
+"
+```
+
+**Coverage:** 164 of 178 hotels geocoded successfully. The 14 failures
+are mostly hotels with non-standard addresses (e.g., `ipartment` branded
+properties without a clear street address, or newly opened hotels not yet
+in Nominatim). These can be manually geocoded and appended if needed.
+
+### Which to use?
+
+| | Overpass | Geocoded import |
+|---|---|---|
+| **Coverage** | Depends on OSM quality (gaps in AT/CH) | Complete for all hotels in the scraped corpus |
+| **Auto-updates** | Reflects live OSM edits | Snapshot — rebuild needed after a new scrape |
+| **Coordinate source** | OSM (precise to building) | Nominatim geocoding (precise to address) |
+| **Brand filtering** | Any brand OSM knows | Only brands in the scraped data |
+| **Best for** | General POI discovery (restaurants, etc.) | Best Western hotel search (the primary use case) |
+
+For the Best Western agent flow (hotels + RAG capacity queries), the
+**geocoded import** is the recommended approach because it guarantees
+every hotel in the RAG corpus is findable by distance — including
+Austrian and Swiss hotels that OSM doesn't have.
+
+---
+
 ## The 9 MCP tools
 
 | Tool | Purpose |
