@@ -13,6 +13,18 @@ image:
 port: 8000
 
 replicas: 1
+# Deployment update strategy. Default Recreate: the poi-data PVC is
+# ReadWriteOnce and the deployment runs a single replica, so a RollingUpdate
+# deadlocks (the new pod waits for a volume the old pod still holds, until the
+# helm timeout). Override here to RollingUpdate if this ever scales past one
+# replica, e.g.:
+#   strategy:
+#     type: RollingUpdate
+#     rollingUpdate:
+#       maxSurge: 0
+#       maxUnavailable: 1
+strategy:
+  type: Recreate
 
 configMap:
   data:
