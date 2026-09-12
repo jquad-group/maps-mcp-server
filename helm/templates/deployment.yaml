@@ -11,9 +11,14 @@ spec:
   {{- with .Values.strategy }}
   strategy:
     type: {{ .type }}
-    {{- with .rollingUpdate }}
+    {{- if .rollingUpdate }}
     rollingUpdate:
       {{- toYaml . | nindent 6 }}
+    {{- else if eq (.type | toString) "Recreate" }}
+    # Explicit null: the API server defaults rollingUpdate on creation and
+    # server-side apply won't drop an omitted field — without this, switching
+    # an existing deployment to Recreate is rejected as invalid.
+    rollingUpdate: null
     {{- end }}
   {{- end }}
   selector:
