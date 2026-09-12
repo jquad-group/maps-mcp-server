@@ -63,6 +63,12 @@ pvc:
   size: 1Gi
   mountPath: /app/data/poi
 
+# Velero: pod volumes to include in backups (rendered as the
+# backup.velero.io/backup-volumes annotation on the Deployment pod template).
+velero:
+  backupVolumes:
+    - poi-data
+
 nodeAffinityAntiGpu: true
 
 resources:

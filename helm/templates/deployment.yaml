@@ -13,6 +13,10 @@ spec:
       {{- include "chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- if .Values.velero.backupVolumes }}
+      annotations:
+        backup.velero.io/backup-volumes: {{ .Values.velero.backupVolumes | join "," | quote }}
+      {{- end }}
       labels:
         {{- include "chart.selectorLabels" . | nindent 8 }}
     spec:
